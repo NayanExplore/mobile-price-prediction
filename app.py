@@ -53,7 +53,7 @@ FINGERPRINT_TYPES = ["In-display","Side","Rear","None"]
 @st.cache_resource
 def train_model():
     np.random.seed(42)
-    N = 2000
+    N = 5000
     brands_w = {"Samsung":0.18,"Apple":0.12,"OnePlus":0.10,"Xiaomi":0.15,"Realme":0.12,"Vivo":0.10,"Oppo":0.10,"Nokia":0.08,"Motorola":0.05}
     proc_list = list(PROCESSORS.keys())
     proc_scores = np.array(list(PROCESSORS.values()))
