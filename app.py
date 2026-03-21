@@ -239,8 +239,7 @@ def train_model():
     )
     score = (score - score.min()) / (score.max() - score.min()) * 100
     df["price_band"] = pd.cut(score, bins=[0,8,17,25,33,42,50,58,67,75,83,92,101],
-                               labels=list(range(12)))
-df["price_band"] = pd.to_numeric(df["price_band"], errors="coerce").fillna(0).astype(int)
+                               labels=list(range(12))).astype(int)
 
     le_brand       = LabelEncoder().fit(df["brand"])
     le_processor   = LabelEncoder().fit(df["processor"])
