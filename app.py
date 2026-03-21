@@ -2,234 +2,539 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
+import plotly.express as px
+from xgboost import XGBClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import Pipeline
-from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import accuracy_score
+import warnings
+warnings.filterwarnings("ignore")
 
-st.set_page_config(page_title="Mobile Price Predictor", page_icon="📱", layout="wide")
+# ── Page Config ───────────────────────────────────────────────────
+st.set_page_config(
+    page_title="Mobile Price Predictor Pro",
+    page_icon="📱",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
+# ── CSS ───────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-.main-header {
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-    padding: 2rem; border-radius: 16px; margin-bottom: 2rem; text-align: center;
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'DM Sans', sans-serif;
 }
-.main-header h1 { color: #e94560; font-size: 2.5rem; margin: 0; }
-.main-header p  { color: #a0aec0; margin: 0.5rem 0 0; }
+
+.header-wrap {
+    background: linear-gradient(135deg, #0a0a0f 0%, #111128 50%, #0d1117 100%);
+    border: 1px solid rgba(99,179,237,0.15);
+    border-radius: 20px;
+    padding: 2.5rem 2rem;
+    text-align: center;
+    margin-bottom: 1.5rem;
+    position: relative;
+    overflow: hidden;
+}
+.header-wrap::before {
+    content: '';
+    position: absolute;
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: radial-gradient(circle at 60% 40%, rgba(99,179,237,0.06) 0%, transparent 60%);
+    pointer-events: none;
+}
+.header-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 2.6rem;
+    font-weight: 800;
+    background: linear-gradient(90deg, #63b3ed, #76e4f7, #b794f4);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin: 0;
+    letter-spacing: -1px;
+}
+.header-sub {
+    color: #718096;
+    margin: 0.4rem 0 0;
+    font-size: 1rem;
+    font-weight: 300;
+}
+
 .price-card {
-    padding: 1.5rem; border-radius: 12px; text-align: center;
-    margin: 1rem 0; font-weight: 700; font-size: 1.8rem;
+    border-radius: 16px;
+    padding: 1.8rem;
+    text-align: center;
+    margin: 0.8rem 0;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 1.6rem;
+    border: 1.5px solid;
+    transition: transform 0.2s;
 }
-.low-price     { background: #e8f5e9; color: #2e7d32; border: 2px solid #66bb6a; }
-.mid-price     { background: #e3f2fd; color: #1565c0; border: 2px solid #42a5f5; }
-.high-price    { background: #fff3e0; color: #e65100; border: 2px solid #ffa726; }
-.premium-price { background: #fce4ec; color: #880e4f; border: 2px solid #ec407a; }
-.metric-box {
-    background: #f8fafc; border-radius: 10px; padding: 1rem;
-    border-left: 4px solid #e94560; margin-bottom: 0.5rem;
+.band-0  { background:#f0fff4; color:#22543d; border-color:#68d391; }
+.band-1  { background:#f0fff4; color:#276749; border-color:#48bb78; }
+.band-2  { background:#ebf8ff; color:#2c5282; border-color:#63b3ed; }
+.band-3  { background:#ebf8ff; color:#2a4365; border-color:#4299e1; }
+.band-4  { background:#fffff0; color:#744210; border-color:#f6e05e; }
+.band-5  { background:#fffaf0; color:#7b341e; border-color:#f6ad55; }
+.band-6  { background:#fff5f5; color:#742a2a; border-color:#fc8181; }
+.band-7  { background:#fff5f5; color:#63171b; border-color:#f56565; }
+.band-8  { background:#faf5ff; color:#44337a; border-color:#b794f4; }
+.band-9  { background:#faf5ff; color:#322659; border-color:#9f7aea; }
+.band-10 { background:#f7fafc; color:#1a202c; border-color:#a0aec0; }
+.band-11 { background: linear-gradient(135deg,#fff9db,#fefcbf); color:#744210; border-color:#f6e05e; }
+
+.spec-card {
+    background: #0d1117;
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 12px;
+    padding: 0.9rem 1rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.spec-label { color: #718096; font-size: 0.85rem; }
+.spec-value { color: #e2e8f0; font-weight: 500; font-size: 0.9rem; }
+
+.badge {
+    display: inline-block;
+    padding: 0.2rem 0.7rem;
+    border-radius: 99px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin: 0.15rem;
+}
+.badge-blue  { background:#2b6cb0; color:#bee3f8; }
+.badge-green { background:#276749; color:#c6f6d5; }
+.badge-purple{ background:#553c9a; color:#e9d8fd; }
+.badge-orange{ background:#c05621; color:#feebc8; }
+
+.accuracy-pill {
+    background: linear-gradient(90deg, #2d3748, #1a202c);
+    border: 1px solid rgba(99,179,237,0.3);
+    border-radius: 99px;
+    padding: 0.4rem 1rem;
+    font-size: 0.85rem;
+    color: #63b3ed;
+    font-weight: 600;
+    display: inline-block;
+    margin-top: 0.5rem;
 }
 </style>
 """, unsafe_allow_html=True)
 
-PRICE_LABELS = {0: "💚 Low Budget", 1: "💙 Mid Range", 2: "🧡 High End", 3: "❤️ Premium"}
-PRICE_STYLES = {0: "low-price", 1: "mid-price", 2: "high-price", 3: "premium-price"}
-PRICE_RANGES = {0: "Under ₹8,000", 1: "₹8,000 – ₹20,000", 2: "₹20,000 – ₹45,000", 3: "Above ₹45,000"}
+# ── Price Bands ───────────────────────────────────────────────────
+PRICE_BANDS = {
+    0:  "Under ₹5,000",
+    1:  "₹5,000 – ₹8,000",
+    2:  "₹8,000 – ₹10,000",
+    3:  "₹10,000 – ₹13,000",
+    4:  "₹13,000 – ₹16,000",
+    5:  "₹16,000 – ₹20,000",
+    6:  "₹20,000 – ₹25,000",
+    7:  "₹25,000 – ₹30,000",
+    8:  "₹30,000 – ₹40,000",
+    9:  "₹40,000 – ₹50,000",
+    10: "₹50,000 – ₹70,000",
+    11: "Above ₹70,000",
+}
 
-FEATURES = [
-    "battery_power", "ram", "internal_memory", "mobile_wt",
-    "px_height", "px_width", "sc_h", "sc_w", "talk_time",
-    "fc", "pc", "n_cores", "clock_speed",
-    "blue", "dual_sim", "four_g", "three_g", "touch_screen", "wifi"
-]
+BAND_EMOJIS = {
+    0:"💚", 1:"💚", 2:"💙", 3:"💙",
+    4:"💛", 5:"🧡", 6:"🔴", 7:"🔴",
+    8:"💜", 9:"💜", 10:"🩶", 11:"👑"
+}
 
+PROCESSORS = {
+    "Snapdragon 8 Gen 3":   100,
+    "Apple A17 Bionic":     100,
+    "Dimensity 9300":        95,
+    "Snapdragon 8 Gen 2":    90,
+    "Apple A16 Bionic":      88,
+    "Dimensity 9200+":       85,
+    "Snapdragon 7s Gen 2":   75,
+    "Dimensity 8200":        72,
+    "Exynos 2200":           70,
+    "Exynos 1380":           65,
+    "Snapdragon 695":        50,
+    "Dimensity 700":         45,
+    "Helio G99":             42,
+    "Helio G85":             25,
+    "Snapdragon 480":        28,
+    "Unisoc T610":           20,
+}
+
+BRANDS = ["Samsung","Apple","OnePlus","Xiaomi","Realme",
+          "Vivo","Oppo","Nokia","Motorola"]
+
+DISPLAY_TYPES = ["AMOLED","Super AMOLED","IPS LCD","LTPO AMOLED","OLED"]
+FINGERPRINT_TYPES = ["In-display","Side","Rear","None"]
+
+# ── Train Model ───────────────────────────────────────────────────
 @st.cache_resource
 def train_model():
     np.random.seed(42)
-    N = 2000
-    data = {
-        "battery_power":   np.random.randint(500, 5001, N),
-        "ram":             np.random.choice([512, 1024, 2048, 3072, 4096, 6144, 8192, 12288], N),
-        "internal_memory": np.random.choice([8, 16, 32, 64, 128, 256, 512], N),
-        "mobile_wt":       np.random.randint(80, 250, N),
-        "px_height":       np.random.randint(480, 2960, N),
-        "px_width":        np.random.randint(360, 1440, N),
-        "sc_h":            np.random.randint(5, 20, N),
-        "sc_w":            np.random.randint(2, 12, N),
-        "talk_time":       np.random.randint(2, 25, N),
-        "fc":              np.random.randint(0, 20, N),
-        "pc":              np.random.randint(0, 64, N),
-        "n_cores":         np.random.randint(1, 9, N),
-        "clock_speed":     np.round(np.random.uniform(0.5, 3.0, N), 1),
-        "blue":            np.random.randint(0, 2, N),
-        "dual_sim":        np.random.randint(0, 2, N),
-        "four_g":          np.random.randint(0, 2, N),
-        "three_g":         np.random.randint(0, 2, N),
-        "touch_screen":    np.random.randint(0, 2, N),
-        "wifi":            np.random.randint(0, 2, N),
-    }
-    df = pd.DataFrame(data)
+    N = 5000
+
+    brands_w = {"Samsung":0.18,"Apple":0.12,"OnePlus":0.10,
+                "Xiaomi":0.15,"Realme":0.12,"Vivo":0.10,
+                "Oppo":0.10,"Nokia":0.08,"Motorola":0.05}
+
+    brand_col       = np.random.choice(list(brands_w.keys()), N, p=list(brands_w.values()))
+    proc_names      = list(PROCESSORS.keys())[:12]
+    proc_scores_arr = np.array([PROCESSORS[p] for p in proc_names])
+    proc_weights    = proc_scores_arr / proc_scores_arr.sum()
+    processor_col   = np.random.choice(proc_names, N, p=proc_weights)
+    processor_score = np.array([PROCESSORS[p] for p in processor_col])
+
+    ram             = np.random.choice([2048,3072,4096,6144,8192,12288,16384], N, p=[0.05,0.10,0.20,0.25,0.20,0.15,0.05])
+    internal_memory = np.random.choice([32,64,128,256,512,1024], N, p=[0.05,0.15,0.35,0.25,0.15,0.05])
+    battery_power   = np.random.randint(3000, 6001, N)
+    n_cores         = np.random.choice([4,6,8], N, p=[0.2,0.3,0.5])
+    clock_speed     = np.round(np.random.uniform(1.8, 3.2, N), 1)
+    primary_cam     = np.random.choice([12,48,50,64,108,200], N, p=[0.10,0.20,0.25,0.20,0.15,0.10])
+    front_cam       = np.random.choice([8,16,20,32,50], N, p=[0.15,0.30,0.25,0.20,0.10])
+    ois             = np.random.randint(0,2,N)
+    night_mode      = np.random.randint(0,2,N)
+    periscope_zoom  = np.random.choice([0,1], N, p=[0.7,0.3])
+    refresh_rate    = np.random.choice([60,90,120,144], N, p=[0.20,0.25,0.35,0.20])
+    five_g          = np.random.choice([0,1], N, p=[0.3,0.7])
+    wifi_6          = np.random.choice([0,1], N, p=[0.4,0.6])
+    nfc             = np.random.choice([0,1], N, p=[0.3,0.7])
+    fast_charging   = np.random.choice([0,18,33,45,67,100,120], N, p=[0.05,0.10,0.20,0.25,0.20,0.10,0.10])
+    wireless_charging = np.random.choice([0,1], N, p=[0.5,0.5])
+    mobile_wt       = np.random.randint(150, 230, N)
+    display_type    = np.random.choice(["AMOLED","Super AMOLED","IPS LCD","LTPO AMOLED"], N, p=[0.30,0.25,0.25,0.20])
+    fingerprint     = np.random.choice(["None","Side","In-display","Rear"], N, p=[0.05,0.30,0.40,0.25])
+
+    df = pd.DataFrame({
+        "brand": brand_col, "processor": processor_col,
+        "processor_score": processor_score, "ram": ram,
+        "internal_memory": internal_memory, "battery_power": battery_power,
+        "n_cores": n_cores, "clock_speed": clock_speed,
+        "primary_cam": primary_cam, "front_cam": front_cam,
+        "ois": ois, "night_mode": night_mode, "periscope_zoom": periscope_zoom,
+        "refresh_rate": refresh_rate, "five_g": five_g, "wifi_6": wifi_6,
+        "nfc": nfc, "fast_charging": fast_charging,
+        "wireless_charging": wireless_charging, "mobile_wt": mobile_wt,
+        "display_type": display_type, "fingerprint": fingerprint,
+    })
+
     score = (
-        (df["ram"] / 12288) * 40 +
-        (df["battery_power"] / 5000) * 15 +
-        (df["internal_memory"] / 512) * 10 +
-        (df["pc"] / 64) * 10 +
-        (df["n_cores"] / 8) * 10 +
-        df["four_g"] * 5 +
-        (df["clock_speed"] / 3.0) * 5 +
-        (df["fc"] / 20) * 5 +
+        (df["processor_score"] / 100) * 35 +
+        (df["ram"] / 16384) * 20 +
+        (df["internal_memory"] / 1024) * 8 +
+        (df["primary_cam"] / 200) * 7 +
+        df["five_g"] * 5 +
+        (df["refresh_rate"] / 144) * 5 +
+        (df["fast_charging"] / 120) * 5 +
+        df["ois"] * 3 + df["wireless_charging"] * 3 +
+        df["periscope_zoom"] * 3 + df["wifi_6"] * 2 +
+        df["nfc"] * 2 + (df["battery_power"] / 6000) * 2 +
         np.random.uniform(0, 5, N)
     )
-    df["price_range"] = pd.cut(score, bins=[0, 25, 50, 75, 101], labels=[0, 1, 2, 3]).astype(int)
-    X = df[FEATURES].copy()
-    y = df["price_range"].copy()
-    X["pixel_density"] = (X["px_height"] * X["px_width"]) / ((X["sc_h"] * X["sc_w"]) + 1e-5)
-    X["screen_area"] = X["sc_h"] * X["sc_w"]
+    score = (score - score.min()) / (score.max() - score.min()) * 100
+    df["price_band"] = pd.cut(score, bins=[0,8,17,25,33,42,50,58,67,75,83,92,101],
+                               labels=list(range(12))).astype(int)
+
+    le_brand       = LabelEncoder().fit(df["brand"])
+    le_processor   = LabelEncoder().fit(df["processor"])
+    le_display     = LabelEncoder().fit(df["display_type"])
+    le_fingerprint = LabelEncoder().fit(df["fingerprint"])
+
+    df["brand_enc"]       = le_brand.transform(df["brand"])
+    df["processor_enc"]   = le_processor.transform(df["processor"])
+    df["display_enc"]     = le_display.transform(df["display_type"])
+    df["fingerprint_enc"] = le_fingerprint.transform(df["fingerprint"])
+
+    FEATURES = [
+        "processor_score","ram","internal_memory","battery_power",
+        "n_cores","clock_speed","primary_cam","front_cam",
+        "ois","night_mode","periscope_zoom","refresh_rate",
+        "five_g","wifi_6","nfc","fast_charging","wireless_charging",
+        "mobile_wt","brand_enc","processor_enc","display_enc","fingerprint_enc"
+    ]
+
+    X = df[FEATURES]
+    y = df["price_band"]
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-    model = Pipeline([
-        ("scaler", StandardScaler()),
-        ("clf", LogisticRegression(max_iter=1000, random_state=42))
-    ])
+
+    model = XGBClassifier(n_estimators=300, max_depth=6, learning_rate=0.1,
+                          random_state=42, eval_metric="mlogloss", verbosity=0)
     model.fit(X_train, y_train)
     acc = accuracy_score(y_test, model.predict(X_test))
-    return model, acc
 
-model, accuracy = train_model()
+    return model, acc, le_brand, le_processor, le_display, le_fingerprint, FEATURES
 
-st.markdown("""
-<div class="main-header">
-    <h1>📱 Mobile Price Predictor</h1>
-    <p>ML-powered price range prediction based on phone specifications</p>
+model, accuracy, le_brand, le_processor, le_display, le_fingerprint, FEATURES = train_model()
+
+# ── Header ────────────────────────────────────────────────────────
+st.markdown(f"""
+<div class="header-wrap">
+    <h1 class="header-title">📱 Mobile Price Predictor Pro</h1>
+    <p class="header-sub">Powered by XGBoost · Brand & Processor Aware · 12 Narrow Price Bands</p>
+    <div class="accuracy-pill">✅ Model Accuracy: {accuracy:.2%}</div>
 </div>
 """, unsafe_allow_html=True)
 
-st.sidebar.header("📋 Phone Specifications")
-st.sidebar.markdown(f"✅ Model Accuracy: **{accuracy:.2%}**")
-st.sidebar.markdown("---")
+# ── Sidebar ───────────────────────────────────────────────────────
+st.sidebar.markdown("## 🔧 Configure Your Phone")
 
 with st.sidebar:
-    st.subheader("🔋 Battery & Performance")
-    battery_power   = st.slider("Battery Power (mAh)", 500, 5000, 4000, 100)
-    ram             = st.selectbox("RAM (MB)", [512, 1024, 2048, 3072, 4096, 6144, 8192, 12288], index=5)
-    internal_memory = st.selectbox("Storage (GB)", [8, 16, 32, 64, 128, 256, 512], index=4)
-    n_cores         = st.slider("CPU Cores", 1, 8, 8)
-    clock_speed     = st.slider("Clock Speed (GHz)", 0.5, 3.0, 2.4, 0.1)
-    talk_time       = st.slider("Talk Time (hours)", 2, 24, 18)
-    st.subheader("📸 Camera")
-    pc = st.slider("Primary Camera (MP)", 0, 64, 48)
-    fc = st.slider("Front Camera (MP)", 0, 20, 16)
-    st.subheader("📐 Display")
-    px_height = st.slider("Resolution Height", 480, 2960, 2400, 20)
-    px_width  = st.slider("Resolution Width", 360, 1440, 1080, 20)
-    sc_h      = st.slider("Screen Height (cm)", 5, 20, 15)
-    sc_w      = st.slider("Screen Width (cm)", 2, 12, 7)
-    st.subheader("⚖️ Physical")
-    mobile_wt = st.slider("Weight (grams)", 80, 250, 195)
-    st.subheader("📡 Connectivity")
+    st.markdown("### 📱 Brand & Processor")
+    brand     = st.selectbox("Brand", BRANDS)
+    processor = st.selectbox("Processor", list(PROCESSORS.keys()))
+    proc_score= PROCESSORS[processor]
+    st.markdown(f"<small style='color:#63b3ed'>Processor Score: **{proc_score}/100**</small>", unsafe_allow_html=True)
+
+    st.markdown("### 🧠 Memory & Storage")
+    ram             = st.selectbox("RAM", [2048,3072,4096,6144,8192,12288,16384],
+                                    format_func=lambda x: f"{x} MB ({x//1024} GB)" if x>=1024 else f"{x} MB",
+                                    index=3)
+    internal_memory = st.selectbox("Storage", [32,64,128,256,512,1024],
+                                    format_func=lambda x: f"{x} GB", index=3)
+
+    st.markdown("### 🔋 Battery & Charging")
+    battery_power     = st.slider("Battery (mAh)", 3000, 6000, 4500, 100)
+    fast_charging     = st.select_slider("Fast Charging (W)", [0,18,33,45,67,100,120], value=45)
+    wireless_charging = st.checkbox("Wireless Charging", True)
+
+    st.markdown("### 📷 Camera")
+    primary_cam    = st.select_slider("Main Camera (MP)", [12,48,50,64,108,200], value=50)
+    front_cam      = st.select_slider("Front Camera (MP)", [8,16,20,32,50], value=16)
+    ois            = st.checkbox("OIS (Optical Image Stabilization)", True)
+    night_mode     = st.checkbox("Night Mode", True)
+    periscope_zoom = st.checkbox("Periscope Zoom", False)
+
+    st.markdown("### 🖥️ Display")
+    display_type = st.selectbox("Display Type", DISPLAY_TYPES)
+    refresh_rate = st.select_slider("Refresh Rate (Hz)", [60,90,120,144], value=120)
+
+    st.markdown("### ⚡ Performance")
+    n_cores     = st.select_slider("CPU Cores", [4,6,8], value=8)
+    clock_speed = st.slider("Clock Speed (GHz)", 1.8, 3.2, 2.8, 0.1)
+
+    st.markdown("### 📡 Connectivity")
     col1, col2 = st.columns(2)
     with col1:
-        blue         = st.checkbox("Bluetooth", True)
-        dual_sim     = st.checkbox("Dual SIM", True)
-        four_g       = st.checkbox("4G", True)
+        five_g = st.checkbox("5G",    True)
+        wifi_6 = st.checkbox("Wi-Fi 6", True)
     with col2:
-        three_g      = st.checkbox("3G", True)
-        touch_screen = st.checkbox("Touch Screen", True)
-        wifi         = st.checkbox("Wi-Fi", True)
+        nfc    = st.checkbox("NFC",   True)
 
-pixel_density = (px_height * px_width) / ((sc_h * sc_w) + 1e-5)
-screen_area   = sc_h * sc_w
+    st.markdown("### 🔒 Security & Build")
+    fingerprint = st.selectbox("Fingerprint", FINGERPRINT_TYPES)
+    mobile_wt   = st.slider("Weight (grams)", 150, 230, 185)
+
+# ── Build Input ───────────────────────────────────────────────────
+try:
+    brand_enc       = le_brand.transform([brand])[0]
+except:
+    brand_enc       = 0
+try:
+    processor_enc   = le_processor.transform([processor])[0]
+except:
+    processor_enc   = 0
+try:
+    display_enc     = le_display.transform([display_type])[0]
+except:
+    display_enc     = 0
+try:
+    fingerprint_enc = le_fingerprint.transform([fingerprint])[0]
+except:
+    fingerprint_enc = 0
 
 input_data = pd.DataFrame([{
-    "battery_power":  battery_power,
-    "ram":            ram,
-    "internal_memory": internal_memory,
-    "mobile_wt":      mobile_wt,
-    "px_height":      px_height,
-    "px_width":       px_width,
-    "sc_h":           sc_h,
-    "sc_w":           sc_w,
-    "talk_time":      talk_time,
-    "fc":             fc,
-    "pc":             pc,
-    "n_cores":        n_cores,
-    "clock_speed":    clock_speed,
-    "blue":           int(blue),
-    "dual_sim":       int(dual_sim),
-    "four_g":         int(four_g),
-    "three_g":        int(three_g),
-    "touch_screen":   int(touch_screen),
-    "wifi":           int(wifi),
-    "pixel_density":  pixel_density,
-    "screen_area":    screen_area
+    "processor_score":  proc_score,
+    "ram":              ram,
+    "internal_memory":  internal_memory,
+    "battery_power":    battery_power,
+    "n_cores":          n_cores,
+    "clock_speed":      clock_speed,
+    "primary_cam":      primary_cam,
+    "front_cam":        front_cam,
+    "ois":              int(ois),
+    "night_mode":       int(night_mode),
+    "periscope_zoom":   int(periscope_zoom),
+    "refresh_rate":     refresh_rate,
+    "five_g":           int(five_g),
+    "wifi_6":           int(wifi_6),
+    "nfc":              int(nfc),
+    "fast_charging":    fast_charging,
+    "wireless_charging":int(wireless_charging),
+    "mobile_wt":        mobile_wt,
+    "brand_enc":        brand_enc,
+    "processor_enc":    processor_enc,
+    "display_enc":      display_enc,
+    "fingerprint_enc":  fingerprint_enc,
 }])
 
 prediction = int(model.predict(input_data)[0])
 proba      = model.predict_proba(input_data)[0]
 
-col_pred, col_chart = st.columns([1, 1.5])
+# ── Main Layout ───────────────────────────────────────────────────
+col_left, col_mid, col_right = st.columns([1.2, 1.3, 1.5])
 
-with col_pred:
-    st.subheader("🎯 Prediction")
+with col_left:
+    st.markdown("### 🎯 Predicted Price Range")
     st.markdown(f"""
-    <div class="price-card {PRICE_STYLES[prediction]}">
-        {PRICE_LABELS[prediction]}<br>
-        <span style="font-size:1rem;font-weight:400">{PRICE_RANGES[prediction]}</span>
-    </div>""", unsafe_allow_html=True)
+    <div class="price-card band-{prediction}">
+        {BAND_EMOJIS[prediction]} {PRICE_BANDS[prediction]}
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.subheader("📊 Confidence")
-    colors = ["#66bb6a", "#42a5f5", "#ffa726", "#ec407a"]
+    # Top 3 predictions
+    top3 = sorted(enumerate(proba), key=lambda x: x[1], reverse=True)[:3]
+    st.markdown("**🔍 Top Matches:**")
+    for idx, p in top3:
+        bar_w = int(p * 100)
+        color = "#63b3ed" if idx == prediction else "#4a5568"
+        st.markdown(f"""
+        <div style="margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;font-size:0.8rem;color:#a0aec0">
+                <span>{PRICE_BANDS[idx]}</span><span>{p:.1%}</span>
+            </div>
+            <div style="background:#1a202c;border-radius:99px;height:6px;margin-top:3px">
+                <div style="background:{color};width:{bar_w}%;height:6px;border-radius:99px;transition:width 0.5s"></div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+with col_mid:
+    st.markdown("### 📋 Spec Summary")
+
+    def spec_row(label, value):
+        st.markdown(f"""
+        <div class="spec-card">
+            <span class="spec-label">{label}</span>
+            <span class="spec-value">{value}</span>
+        </div>""", unsafe_allow_html=True)
+
+    spec_row("📱 Brand", brand)
+    spec_row("⚡ Processor", processor)
+    spec_row("🧠 RAM", f"{ram//1024}GB" if ram >= 1024 else f"{ram}MB")
+    spec_row("💾 Storage", f"{internal_memory}GB")
+    spec_row("🔋 Battery", f"{battery_power} mAh")
+    spec_row("⚡ Charging", f"{fast_charging}W Fast" + (" + Wireless" if wireless_charging else ""))
+    spec_row("📷 Camera", f"{primary_cam}MP + {front_cam}MP front")
+    spec_row("🖥️ Display", f"{display_type} · {refresh_rate}Hz")
+    spec_row("🔧 Processor Score", f"{proc_score}/100")
+
+    # Feature badges
+    st.markdown("<div style='margin-top:0.8rem'>", unsafe_allow_html=True)
+    badges = []
+    if five_g:          badges.append(('<span class="badge badge-blue">5G</span>'))
+    if wifi_6:          badges.append(('<span class="badge badge-blue">Wi-Fi 6</span>'))
+    if nfc:             badges.append(('<span class="badge badge-green">NFC</span>'))
+    if ois:             badges.append(('<span class="badge badge-purple">OIS</span>'))
+    if night_mode:      badges.append(('<span class="badge badge-purple">Night Mode</span>'))
+    if periscope_zoom:  badges.append(('<span class="badge badge-orange">Periscope Zoom</span>'))
+    if wireless_charging: badges.append(('<span class="badge badge-green">Wireless Charging</span>'))
+    st.markdown(" ".join(badges) + "</div>", unsafe_allow_html=True)
+
+with col_right:
+    st.markdown("### 📊 Confidence Chart")
     fig = go.Figure(go.Bar(
+        y=[PRICE_BANDS[i] for i in range(12)],
         x=proba,
-        y=[PRICE_LABELS[i] for i in range(4)],
         orientation="h",
-        marker_color=colors,
-        text=[f"{p:.1%}" for p in proba],
-        textposition="outside"
+        marker=dict(
+            color=proba,
+            colorscale=[[0,"#2d3748"],[0.5,"#2b6cb0"],[1,"#63b3ed"]],
+            showscale=False
+        ),
+        text=[f"{p:.1%}" if p > 0.03 else "" for p in proba],
+        textposition="outside",
+        textfont=dict(size=11)
     ))
     fig.update_layout(
-        height=220,
-        margin=dict(l=0, r=40, t=10, b=10),
-        xaxis=dict(range=[0, 1.1], showticklabels=False),
-        plot_bgcolor="white",
-        paper_bgcolor="white"
+        height=400,
+        margin=dict(l=0, r=60, t=10, b=10),
+        xaxis=dict(range=[0, max(proba)*1.3], showticklabels=False, showgrid=False),
+        yaxis=dict(tickfont=dict(size=10)),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#a0aec0")
     )
     st.plotly_chart(fig, use_container_width=True)
 
-with col_chart:
-    st.subheader("📈 Spec Radar")
-    radar_values = [
-        min(battery_power / 5000, 1) * 100,
-        min(ram / 12288, 1) * 100,
-        min(internal_memory / 512, 1) * 100,
-        min(pc / 64, 1) * 100,
-        min(n_cores / 8, 1) * 100,
-        min(clock_speed / 3.0, 1) * 100,
-        (100 - min(mobile_wt / 250, 1) * 100),
-        min(fc / 20, 1) * 100,
+# ── Radar Chart ───────────────────────────────────────────────────
+st.markdown("---")
+col_radar, col_compare = st.columns([1, 1])
+
+with col_radar:
+    st.markdown("### 📡 Spec Radar")
+    radar_vals = [
+        proc_score,
+        min(ram/16384,1)*100,
+        min(internal_memory/1024,1)*100,
+        min(primary_cam/200,1)*100,
+        min(battery_power/6000,1)*100,
+        min(fast_charging/120,1)*100,
+        min(refresh_rate/144,1)*100,
+        (int(five_g)+int(wifi_6)+int(nfc))/3*100,
     ]
-    cats = ["Battery", "RAM", "Storage", "Camera", "Cores", "Speed", "Light", "Front Cam"]
-    rv = radar_values + [radar_values[0]]
+    cats = ["Processor","RAM","Storage","Camera","Battery","Charging","Display","Connectivity"]
+    rv = radar_vals + [radar_vals[0]]
     rc = cats + [cats[0]]
     fig2 = go.Figure(go.Scatterpolar(
-        r=rv,
-        theta=rc,
-        fill="toself",
-        fillcolor="rgba(233,69,96,0.2)",
-        line=dict(color="#e94560", width=2),
-        marker=dict(size=6, color="#e94560")
+        r=rv, theta=rc, fill="toself",
+        fillcolor="rgba(99,179,237,0.15)",
+        line=dict(color="#63b3ed", width=2),
+        marker=dict(size=5, color="#63b3ed")
     ))
     fig2.update_layout(
-        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
-        showlegend=False,
-        height=380,
-        margin=dict(l=30, r=30, t=30, b=30),
-        paper_bgcolor="white"
+        polar=dict(
+            radialaxis=dict(visible=True, range=[0,100], tickfont=dict(size=8), gridcolor="#2d3748"),
+            angularaxis=dict(gridcolor="#2d3748"),
+            bgcolor="rgba(0,0,0,0)"
+        ),
+        showlegend=False, height=350,
+        margin=dict(l=40,r=40,t=30,b=30),
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#a0aec0")
     )
     st.plotly_chart(fig2, use_container_width=True)
 
+with col_compare:
+    st.markdown("### 🏆 How It Compares")
+    compare_phones = {
+        "Budget Phone":  {"score":20,"price":"Under ₹8K"},
+        "Mid Range":     {"score":45,"price":"₹12K–₹16K"},
+        "Your Phone":    {"score":proc_score + min(ram/16384,1)*20 + int(five_g)*5 + min(refresh_rate/144,1)*5,"price":PRICE_BANDS[prediction]},
+        "Flagship":      {"score":90,"price":"Above ₹70K"},
+    }
+    names  = list(compare_phones.keys())
+    scores = [compare_phones[n]["score"] for n in names]
+    colors = ["#4a5568","#4a5568","#63b3ed","#4a5568"]
+    fig3 = go.Figure(go.Bar(
+        x=names, y=scores,
+        marker_color=colors,
+        text=[compare_phones[n]["price"] for n in names],
+        textposition="outside",
+        textfont=dict(size=9, color="#a0aec0")
+    ))
+    fig3.update_layout(
+        height=320,
+        yaxis=dict(range=[0,120], title="Overall Score", gridcolor="#2d3748", tickfont=dict(color="#a0aec0")),
+        xaxis=dict(tickfont=dict(color="#e2e8f0")),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10,r=10,t=40,b=10),
+        font=dict(color="#a0aec0")
+    )
+    st.plotly_chart(fig3, use_container_width=True)
+
+# ── Footer ─────────────────────────────────────────────────────────
 st.markdown("---")
-st.markdown(
-    f"<p style='text-align:center;color:#a0aec0'>Mobile Price Predictor • Built with ❤️ using Python & Streamlit • Accuracy: {accuracy:.2%}</p>",
-    unsafe_allow_html=True
-)
+st.markdown(f"""
+<p style='text-align:center;color:#4a5568;font-size:0.85rem'>
+    Mobile Price Predictor Pro &nbsp;•&nbsp; XGBoost Model &nbsp;•&nbsp;
+    12 Narrow Price Bands &nbsp;•&nbsp; Accuracy: {accuracy:.2%} &nbsp;•&nbsp;
+    Built with ❤️ by Nayan
+</p>
+""", unsafe_allow_html=True)
